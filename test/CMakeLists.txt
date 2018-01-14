@@ -1,11 +1,11 @@
-cmake_minimum_required(VERSION 3.7)
+cmake_minimum_required(VERSION 3.6)
 
 set(CMAKE_CONFIGURATION_TYPES "Debug" "Release")
 
-set(ProjectName SZLib)
+set(ProjectName szlib)
 project(${ProjectName})
 
-set(SOURCES "main.cpp")
+set(SOURCES "main.cpp;test.cpp;../szlib.h")
 
 include_directories(AFTER ${CMAKE_CURRENT_SOURCE_DIR})
 link_directories("zlib")
@@ -39,7 +39,7 @@ if(MSVC)
 elseif(UNIX)
     set(DEFAULT_CXX_FLAGS "-Wall -O2 -std=c++11")
     set(CMAKE_CXX_FLAGS "${DEFAULT_CXX_FLAGS}")
-    target_link_libraries(${ProjectName} "zlibstat.lib")
+    target_link_libraries(${ProjectName} "z")
 elseif(APPLE)
 endif()
 
