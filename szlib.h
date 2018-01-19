@@ -857,21 +857,18 @@ SZ_STATIC void flush(szContext* context)
     code->length_ = 0;
 }
 
-#define FLUSH_PENDING(context, code) \
-    if(0<code->length_){\
-        sz_s32 remain = context->availOut_-context->thisTimeOut_;\
-        if(remain<code->length_){\
-            return SZ_PENDING;\
-        }\
-        flush(context);\
-    }\
-
 SZ_STATIC SZ_Status inflateFixedHuffman(szContext* context)
 {
     szContextInternal* internal = context->internal_;
     szBitStream* stream = &internal->bitStream_;
     szCode* code = &internal->lastCode_;
-    FLUSH_PENDING(context, code);
+    if(0<code->length_){
+        sz_s32 remain = context->availOut_-context->thisTimeOut_;
+        if(remain<code->length_){
+            return SZ_PENDING;
+        }
+        flush(context);
+    }
 
     for(;;){
         if(!readFixedCode(code, stream)){
@@ -1183,10 +1180,18 @@ SZ_STATIC SZ_Status inflateDynamicHuffman(szContext* context)
     szContextInternal* internal = context->internal_;
     szBitStream* stream = &internal->bitStream_;
     szCode* code = &internal->lastCode_;
-    FLUSH_PENDING(context, code);
-    if(!loadDynamicHuffmanCodes(context)){
-        return SZ_ERROR_FORMAT;
+    if(0<code->length_){
+        sz_s32 remain = context->availOut_-context->thisTimeOut_;
+        if(remain<code->length_){
+            return SZ_PENDING;
+        }
+        flush(context);
+    }else{
+        if(!loadDynamicHuffmanCodes(context)){
+            return SZ_ERROR_FORMAT;
+        }
     }
+
     for(;;){
         if(!readDynamicCode(code, internal->treeLiteral_, internal->treeDistance_, stream)){
             return SZ_ERROR_FORMAT;

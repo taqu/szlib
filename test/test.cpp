@@ -125,8 +125,8 @@ int inf2(std::vector<sz_u8>& dst, sz_u32 srcSize, sz_u8* src)
     }
 
 
-#if 0
-    const int Chunk = 16384;
+#if 1
+    const int Chunk = 1024;
     sz_u8 out[Chunk];
 #else
     const int Chunk = (srcSize*2<SZ_MAX_LENGTH)? SZ_MAX_LENGTH : srcSize*2;
@@ -164,7 +164,7 @@ int inf2(std::vector<sz_u8>& dst, sz_u32 srcSize, sz_u8* src)
         break;
     }
     termInflate(&context);
-    delete[] out;
+    //delete[] out;
     return ret == SZ_END? outCount : -1;
 }
 
