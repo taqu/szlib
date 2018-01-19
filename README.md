@@ -1,6 +1,6 @@
 # szlib
+[![Build Status](https://travis-ci.org/taqu/szlib.svg?branch=master)](https://travis-ci.org/taqu/szlib)  
 szlib is a very simple zlib decompression library for C++.
-[![Build Status](https://travis-ci.org/taqu/szlib.svg?branch=master)](https://travis-ci.org/taqu/szlib)
 
 # Usage
 szlib is a single header only library, so put '#define SZLIB_IMPLEMENTATION' before including "szlib.h" to create the implementation.  
