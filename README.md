@@ -55,3 +55,5 @@ for(;;){
 termInflate(&context);
 return ret == SZ_END? outCount : -1;
 ```
+# License
+This is free and unencumbered software released into the public domain.
