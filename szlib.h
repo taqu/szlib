@@ -29,6 +29,7 @@ For more information, please refer to <http://unlicense.org>
 /**
 @author t-sakai
 @date 2018/01/07 create
+@date 2018/08/04 add createInflate
 
 USAGE:
 Put '#define SZLIB_IMPLEMENTATION' before including this file to create the implementation.
@@ -388,6 +389,7 @@ SZ_STRUCT_END(szContext)
 @brief Initialize context.
 @param context ... 
 @param size ... size of input data "src"
+@param src ... source
 @param pMalloc ... user's malloc
 @param pFree ... user's free
 @param user ... user data for malloc/free functions
@@ -397,6 +399,20 @@ SZ_STRUCT_END(szContext)
 SZ_Status SZ_PREFIX(initInflate) (szContext* context, sz_s32 size, const sz_u8* src, FUNC_MALLOC pMalloc=SZ_NULL, FUNC_FREE pFree=SZ_NULL, void* user=SZ_NULL);
 #else
 SZ_EXTERN SZ_Status SZ_PREFIX(initInflate) (szContext* context, sz_s32 size, const sz_u8* src, FUNC_MALLOC pMalloc, FUNC_FREE pFree, void* user);
+#endif
+
+/**
+@brief Create context only without initializing. The function `resetInflate' should be called.
+@param context ... 
+@param pMalloc ... user's malloc
+@param pFree ... user's free
+@param user ... user data for malloc/free functions
+@warn Both pMalloc and pFree should be provided together.
+*/
+#ifdef __cplusplus
+SZ_Status SZ_PREFIX(createInflate) (szContext* context, FUNC_MALLOC pMalloc=SZ_NULL, FUNC_FREE pFree=SZ_NULL, void* user=SZ_NULL);
+#else
+SZ_EXTERN SZ_Status SZ_PREFIX(createInflate) (szContext* context, FUNC_MALLOC pMalloc, FUNC_FREE pFree, void* user);
 #endif
 
 /**
@@ -1257,6 +1273,26 @@ SZ_Status SZ_PREFIX(initInflate)(szContext* context, sz_s32 size, const sz_u8* s
     internal->data_ = internal->buffer_ + SZ_MAX_DISTANCE;
 
     SZ_PREFIX(resetInflate)(context, size, src);
+    return SZ_OK;
+}
+
+SZ_Status SZ_PREFIX(createInflate)(szContext* context, FUNC_MALLOC pMalloc, FUNC_FREE pFree, void* user)
+{
+    SZ_ASSERT(SZ_NULL != context);
+    pMalloc = (SZ_NULL == pMalloc)? sz_malloc : pMalloc;
+    pFree = (SZ_NULL == pFree)? sz_free : pFree;
+
+    szContextInternal* internal = REINTERPRET_CAST(szContextInternal*, pMalloc(sizeof(szContextInternal), user));
+    if(SZ_NULL == internal){
+        return SZ_ERROR_MEMORY;
+    }
+    context->internal_ = internal;
+    internal->malloc_ = pMalloc;
+    internal->free_ = pFree;
+    internal->user_ = user;
+    internal->window_ = internal->buffer_;
+    internal->data_ = internal->buffer_ + SZ_MAX_DISTANCE;
+
     return SZ_OK;
 }
 
