@@ -57,3 +57,6 @@ return ret == SZ_END? outCount : -1;
 ```
 # License
 This is free and unencumbered software released into the public domain.
+
+# Changes
+2018/08/17 Add deflate with only no-compression or static Huffman codes.

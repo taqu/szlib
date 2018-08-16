@@ -1,6 +1,9 @@
 #define SZLIB_IMPLEMENTATION
 #include "../szlib.h"
+
+#ifdef USE_ZLIB
 #include "zlib/zlib.h"
+#endif
 #include <vector>
 #include <string.h>
 #include <random>
@@ -16,51 +19,7 @@
 using namespace szlib;
 #endif
 
-int def(sz_u8* dst, sz_u32 srcSize, const sz_u8* src, sz_s32 level, sz_s32 strategy)
-{
-    int ret, flush;
-    z_stream stream;
-    stream.zalloc = NULL;
-    stream.zfree = NULL;
-    stream.opaque = NULL;
-    ret = deflateInit2(&stream, level, Z_DEFLATED, MAX_WBITS, 8, strategy);
-
-    if(Z_OK != ret){
-        return ret;
-    }
-
-    const int Chunk = 16384;
-    sz_u8 in[Chunk];
-    sz_u8 out[Chunk];
-    sz_u32 count = 0;
-    int outCount = 0;
-    do{
-        if(srcSize<=count){
-            deflateEnd(&stream);
-            return outCount;
-        }
-        sz_u32 size = Chunk;
-        if(srcSize<(count+size)){
-            size = srcSize-count;
-        }
-        stream.avail_in = size;
-        memcpy(in, src+count, size);
-        count += size;
-        flush = (srcSize<=count)? Z_FINISH : Z_NO_FLUSH;
-        stream.next_in = in;
-        do{
-            stream.avail_out = Chunk;
-            stream.next_out = out;
-            ret = deflate(&stream, flush);
-            int s = Chunk - stream.avail_out;
-            memcpy(dst+outCount, out, s);
-            outCount += s;
-        }while(stream.avail_out == 0);
-    }while(flush != Z_FINISH);
-    deflateEnd(&stream);
-    return outCount;
-}
-
+#ifdef USE_ZLIB
 int inf(sz_u8* dst, sz_u32 srcSize, sz_u8* src)
 {
     int ret;
@@ -115,6 +74,52 @@ int inf(sz_u8* dst, sz_u32 srcSize, sz_u8* src)
     return ret == Z_STREAM_END? outCount : Z_DATA_ERROR;
 }
 
+int def(sz_u8* dst, sz_u32 srcSize, const sz_u8* src, sz_s32 level, sz_s32 strategy)
+{
+    int ret, flush;
+    z_stream stream;
+    stream.zalloc = NULL;
+    stream.zfree = NULL;
+    stream.opaque = NULL;
+    ret = deflateInit2(&stream, level, Z_DEFLATED, MAX_WBITS, 8, strategy);
+
+    if(Z_OK != ret){
+        return ret;
+    }
+
+    const int Chunk = 16384;
+    sz_u8 in[Chunk];
+    sz_u8 out[Chunk];
+    sz_u32 count = 0;
+    int outCount = 0;
+    do{
+        if(srcSize<=count){
+            deflateEnd(&stream);
+            return outCount;
+        }
+        sz_u32 size = Chunk;
+        if(srcSize<(count+size)){
+            size = srcSize-count;
+        }
+        stream.avail_in = size;
+        memcpy(in, src+count, size);
+        count += size;
+        flush = (srcSize<=count)? Z_FINISH : Z_NO_FLUSH;
+        stream.next_in = in;
+        do{
+            stream.avail_out = Chunk;
+            stream.next_out = out;
+            ret = deflate(&stream, flush);
+            int s = Chunk - stream.avail_out;
+            memcpy(dst+outCount, out, s);
+            outCount += s;
+        }while(stream.avail_out == 0);
+    }while(flush != Z_FINISH);
+    deflateEnd(&stream);
+    return outCount;
+}
+#endif
+
 int inf2(std::vector<sz_u8>& dst, sz_u32 srcSize, sz_u8* src)
 {
     int ret;
@@ -125,13 +130,8 @@ int inf2(std::vector<sz_u8>& dst, sz_u32 srcSize, sz_u8* src)
     }
 
 
-#if 1
     const int Chunk = 1024;
     sz_u8 out[Chunk];
-#else
-    const int Chunk = (srcSize*2<SZ_MAX_LENGTH)? SZ_MAX_LENGTH : srcSize*2;
-    sz_u8* out = new sz_u8[Chunk];
-#endif
     sz_s32 outCount = 0;
     size_t total = 0;
     dst.clear();
@@ -164,11 +164,49 @@ int inf2(std::vector<sz_u8>& dst, sz_u32 srcSize, sz_u8* src)
         break;
     }
     termInflate(&context);
-    //delete[] out;
     return ret == SZ_END? outCount : -1;
 }
 
-TEST_CASE("Decode uncompressed")
+int def2(std::vector<sz_u8>& dst, sz_u32 srcSize, const sz_u8* src, SZ_Level level)
+{
+    int ret;
+    szContext context;
+    ret = initDeflate(&context, srcSize, src, SZ_NULL, SZ_NULL, SZ_NULL, level);
+    if(SZ_OK != ret){
+        return ret;
+    }
+
+    const sz_s32 Chunk = 32;
+    sz_u8 out[Chunk];
+    sz_s32 outCount = 0;
+    sz_s32 total = 0;
+    for(;;){
+        context.availOut_ = Chunk;
+        context.nextOut_ = out;
+        ret = deflate(&context);
+        switch(ret)
+        {
+        case SZ_ERROR_MEMORY:
+        case SZ_ERROR_FORMAT:
+            break;
+        default:
+            total = outCount+context.thisTimeOut_;
+            dst.resize(dst.size() + context.thisTimeOut_);
+            memcpy(&dst[0]+outCount, out, context.thisTimeOut_);
+            outCount += context.thisTimeOut_;
+            if(SZ_END!=ret){
+                continue;
+            }
+            break;
+        };
+        break;
+    }
+    termDeflate(&context);
+    return ret == SZ_END? total : -1;
+}
+
+#if 0
+TEST_CASE("Decode Uncompressed")
 {
     static const sz_s32 MaxSrcSize = static_cast<sz_s32>(0xFFFF*1.5);
     sz_u8* src = new sz_u8[MaxSrcSize];
@@ -229,8 +267,7 @@ TEST_CASE("Decode Fixed")
         srcSize2 = inf2(src2, dstSize, dst);
         REQUIRE(srcSize2 == srcSize);
         for(sz_s32 i = 0; i<srcSize; ++i){
-            if(src[i] != src2[i])
-                REQUIRE(src[i] == src2[i]);
+            REQUIRE(src[i] == src2[i]);
         }
     }
     delete[] dst;
@@ -264,10 +301,66 @@ TEST_CASE("Decode Dynamic")
         srcSize2 = inf2(src2, dstSize, dst);
         REQUIRE(srcSize2 == srcSize);
         for(sz_s32 i = 0; i<srcSize; ++i){
-            if(src[i] != src2[i])
-                REQUIRE(src[i] == src2[i]);
+            REQUIRE(src[i] == src2[i]);
         }
     }
     delete[] dst;
+    delete[] src;
+}
+#endif
+
+TEST_CASE("Encode Uncompressed")
+{
+    std::mt19937 mt;
+    std::random_device rand;
+    mt.seed(rand());
+    //mt.seed(12345);
+
+    static const sz_s32 MaxSrcSize = static_cast<sz_s32>(0xFFFF*2);
+    static const sz_s32 MaxDstSize = MaxSrcSize*2;
+    sz_s32 srcSize = MaxSrcSize-15;
+    sz_u8* src = new sz_u8[srcSize];
+    for(sz_s32 i=0; i<srcSize; ++i){
+        src[i] = static_cast<sz_u8>(mt());
+    }
+    std::vector<sz_u8> dst;
+    sz_s32 dstSize = def2(dst, srcSize, src, SZ_Level_NoCompression);
+
+    std::vector<sz_u8> dst2;
+    sz_s32 dst2Size = inf2(dst2, (sz_s32)dst.size(), &dst[0]);
+
+    REQUIRE(dst2Size == srcSize);
+    for(sz_s32 i=0; i<srcSize; ++i){
+        REQUIRE(dst2[i] == src[i]);
+    }
+
+    delete[] src;
+}
+
+TEST_CASE("Encode Fixed")
+{
+    std::mt19937 mt;
+    std::random_device rand;
+    mt.seed(rand());
+    //mt.seed(12345);
+
+    static const sz_s32 MaxSrcSize = static_cast<sz_s32>(0xFFFF*2);
+    static const sz_s32 MaxDstSize = MaxSrcSize*2;
+    sz_s32 srcSize = MaxSrcSize-15;
+    sz_u8* src = new sz_u8[srcSize];
+    for(sz_s32 i=0; i<srcSize; ++i){
+        src[i] = static_cast<sz_u8>(mt()&0x07U);
+    }
+    std::vector<sz_u8> dst;
+    sz_s32 dstSize = def2(dst, srcSize, src, SZ_Level_Fixed);
+
+    std::vector<sz_u8> dst2;
+    sz_s32 dst2Size = inf2(dst2, (sz_s32)dst.size(), &dst[0]);
+
+    REQUIRE(dst2Size == srcSize);
+    for(sz_s32 i=0; i<srcSize; ++i){
+        REQUIRE(dst2[i] == src[i]);
+    }
+
     delete[] src;
 }
