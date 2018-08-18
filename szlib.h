@@ -1692,6 +1692,8 @@ SZ_STATIC sz_bool findLongestMatch(szLZSSLiteral* result, Hash hash, szLZSSHisto
                 break;
             }
         }
+
+        l -= 3; //subtract offset
         if(result->length_<l){
             result->distance_ = STATIC_CAST(sz_u16, distance);
             result->length_ = STATIC_CAST(sz_u8, l);
@@ -1737,39 +1739,40 @@ SZ_STATIC void writeFixedLiteral(szContext* context, szLZSSLiteral literal)
         writeFixedCode(context, code);
 
     }else{
-        SZ_ASSERT(3<=literal.length_ && literal.length_<=SZ_MAX_LENGTH);
+        sz_u16 length = literal.length_ + 3;
+        SZ_ASSERT(3<=length && length<=SZ_MAX_LENGTH);
         SZ_ASSERT(1<=literal.distance_ && literal.distance_<=SZ_MAX_DISTANCE);
-        if(literal.length_<=10){
-            code = 257 + literal.length_ - 3;
+        if(length<=10){
+            code = 257 + length - 3;
             writeFixedCode(context, code);
 
-        }else if(literal.length_<=18){
-            code = 265 + ((literal.length_-11)>>1);
-            sz_u8 extraBits = literal.length_ & 0x01U;
+        }else if(length<=18){
+            code = 265 + ((length-11)>>1);
+            sz_u8 extraBits = length & 0x01U;
             writeFixedCode(context, code);
             writeBitsLE(context, 1, extraBits);
 
-        }else if(literal.length_<=34){
-            code = 269 + ((literal.length_-19)>>2);
-            sz_u8 extraBits = literal.length_ & 0x03U;
+        }else if(length<=34){
+            code = 269 + ((length-19)>>2);
+            sz_u8 extraBits = length & 0x03U;
             writeFixedCode(context, code);
             writeBitsLE(context, 2, extraBits);
 
-        }else if(literal.length_<=66){
-            code = 273 + ((literal.length_-35)>>3);
-            sz_u8 extraBits = literal.length_ & 0x07U;
+        }else if(length<=66){
+            code = 273 + ((length-35)>>3);
+            sz_u8 extraBits = length & 0x07U;
             writeFixedCode(context, code);
             writeBitsLE(context, 3, extraBits);
 
-        }else if(literal.length_<=130){
-            code = 277 + ((literal.length_-67)>>4);
-            sz_u8 extraBits = literal.length_ & 0x0FU;
+        }else if(length<=130){
+            code = 277 + ((length-67)>>4);
+            sz_u8 extraBits = length & 0x0FU;
             writeFixedCode(context, code);
             writeBitsLE(context, 4, extraBits);
 
-        }else if(literal.length_<=257){
-            code = 281 + ((literal.length_-131)>>5);
-            sz_u8 extraBits = literal.length_ & 0x1FU;
+        }else if(length<=257){
+            code = 281 + ((length-131)>>5);
+            sz_u8 extraBits = length & 0x1FU;
             writeFixedCode(context, code);
             writeBitsLE(context, 5, extraBits);
 
@@ -2226,12 +2229,13 @@ SZ_Status SZ_PREFIX(deflate)(szContext* context)
                 hash.value_ = (SZ_NULL != e)? hash_FNV1(scur, SZ_HASH_LENGTH) : 0;
                 szLZSSLiteral result;
                 if(SZ_NULL != e && findLongestMatch(&result, hash, &internal->history_, scur, e, internal->nextIn_)){
-                    scur += result.length_;
-                    internal->currentIn_ += result.length_;
+                    sz_u16 length = result.length_ + 3;
+                    scur += length;
+                    internal->currentIn_ += length;
                 }else{
                     result.distance_ = 0;
                     result.code_ = *scur;
-                    result.length_ = 1;
+                    result.length_ = 0;
                     ++scur;
                     ++internal->currentIn_;
                 }
