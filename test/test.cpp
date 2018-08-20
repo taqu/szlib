@@ -205,7 +205,8 @@ int def2(std::vector<sz_u8>& dst, sz_u32 srcSize, const sz_u8* src, SZ_Level lev
     return ret == SZ_END? total : -1;
 }
 
-#if 0
+#ifdef USE_ZLIB
+
 TEST_CASE("Decode Uncompressed")
 {
     static const sz_s32 MaxSrcSize = static_cast<sz_s32>(0xFFFF*1.5);
@@ -242,22 +243,15 @@ TEST_CASE("Decode Uncompressed")
 
 TEST_CASE("Decode Fixed")
 {
-    static const sz_s32 MaxSrcSize = static_cast<sz_s32>(0xFFFF*1.5);
+    static const sz_s32 MaxSrcSize = static_cast<sz_s32>(0xFFFF*2);
     sz_u8* src = new sz_u8[MaxSrcSize];
     sz_s32 srcSize = MaxSrcSize;
     static const sz_s32 MaxDstSize = MaxSrcSize*3;
     sz_u8* dst = new sz_u8[MaxDstSize];
     std::vector<sz_u8> src2;
-    for(int count=0; count<128; ++count){
-        std::mt19937 mt;
-        std::random_device rand;
-        std::uniform_int_distribution<sz_s32> dist_size(0xFFFF, MaxSrcSize);
-        std::uniform_int_distribution<sz_u32> dist_byte(0, 16);
-        unsigned int seed = rand();
-        mt.seed(seed);
-        srcSize = dist_size(mt);;
-        for(sz_s32 i = 0; i<srcSize; ++i){
-            src[i] = static_cast<sz_u8>(dist_byte(mt));
+    for(int count=0; count<2; ++count){
+        for(sz_s32 i=0; i<srcSize; ++i){
+            src[i] = static_cast<sz_u8>(i);
         }
 
         sz_s32 dstSize = 0;
@@ -282,7 +276,7 @@ TEST_CASE("Decode Dynamic")
     static const sz_s32 MaxDstSize = MaxSrcSize*3;
     sz_u8* dst = new sz_u8[MaxDstSize];
     std::vector<sz_u8> src2;
-    for(int count=0; count<128; ++count){
+    for(int count=0; count<8; ++count){
         std::mt19937 mt;
         std::random_device rand;
         std::uniform_int_distribution<sz_s32> dist_size(0xFFFF, MaxSrcSize);
@@ -349,7 +343,8 @@ TEST_CASE("Encode Fixed")
     sz_s32 srcSize = MaxSrcSize-15;
     sz_u8* src = new sz_u8[srcSize];
     for(sz_s32 i=0; i<srcSize; ++i){
-        src[i] = static_cast<sz_u8>(mt()&0x07U);
+        //src[i] = static_cast<sz_u8>(mt()&0x07U);
+        src[i] = static_cast<sz_u8>(i);
     }
     std::vector<sz_u8> dst;
     sz_s32 dstSize = def2(dst, srcSize, src, SZ_Level_Fixed);

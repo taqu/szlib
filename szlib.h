@@ -217,8 +217,9 @@ static const sz_s32 SZ_MAX_MATCH_LENGTH = 258;
 static const sz_s32 SZ_MAX_CHAIN_SIZE = 16384;
 static const sz_u32 SZ_CHAIN_MASK = SZ_MAX_CHAIN_SIZE-1;
 static const sz_u16 SZ_CHAIN_EMPTY16 = 0xFFFFU;
-static const sz_s32 SZ_MAX_LITERAL_BUFFER_SIZE = 4096;
+static const sz_s32 SZ_MAX_LITERAL_BUFFER_SIZE = 4096-1;
 static const sz_s32 SZ_HASH_LENGTH = 3;
+static const sz_s32 SZ_LENGTH_EXTRA_SHIFT = 9;
 
 static const sz_s32 SZ_MIN_DEFLATE_OUTBUFF_SIZE = 8;
 
@@ -295,7 +296,7 @@ static const sz_s32 SZ_MIN_DEFLATE_OUTBUFF_SIZE = 8;
 #define SZ_MAX_CHAIN_SIZE (16384)
 #define SZ_CHAIN_MASK (SZ_MAX_CHAIN_SIZE-1)
 #define SZ_CHAIN_EMPTY16 (0xFFFFU)
-#define SZ_MAX_LITERAL_BUFFER_SIZE (4096)
+#define SZ_MAX_LITERAL_BUFFER_SIZE (4096-1)
 #define SZ_HASH_LENGTH (3)
 
 #define SZ_MIN_DEFLATE_OUTBUFF_SIZE (8)
@@ -385,10 +386,7 @@ SZ_STRUCT_BEGIN(szWriteStream)
 {
     sz_s16 bit_;
     sz_s16 pendingBitsLE_;
-    sz_s16 pendingBitsBE_;
-    sz_u16 pendingBE_;
-    sz_u8 pendingLE_;
-    sz_u8 reserved_;
+    sz_u16 pendingLE_;
 }
 SZ_STRUCT_END(szWriteStream)
 
@@ -460,8 +458,7 @@ SZ_STRUCT_END(szLZSSHistory)
 SZ_STRUCT_BEGIN(szLZSSLiteral)
 {
     sz_u16 distance_;
-    sz_u8 code_;
-    sz_u8 length_; //length-3
+    sz_u16 code_;
 }
 SZ_STRUCT_END(szLZSSLiteral)
 
@@ -644,12 +641,10 @@ namespace szlib
         szLZSSHistory history_;
         sz_s32 inLiteralSize_;
         sz_s32 outLiteralSize_;
-        szLZSSLiteral literals_[SZ_MAX_LITERAL_BUFFER_SIZE];
+        szLZSSLiteral literals_[SZ_MAX_LITERAL_BUFFER_SIZE+1];
 
-        sz_s16 lenHlits_;
-        sz_s16 lenHdists_;
-        szLengthCode hlitsDists_[SZ_HLENS+SZ_HDISTS];
-
+        sz_s32 hlens_[SZ_HLENS];
+        sz_s32 hdists_[SZ_HDISTS];
         sz_u32 adler_;
     }
     SZ_STRUCT_END(szContextDeflate)
@@ -955,6 +950,7 @@ SZ_STATIC sz_s16 readFixedLiteral(szBitStream* stream)
 
 SZ_STATIC sz_bool readFixedCode(szCode* code, szBitStream* stream)
 {
+    code->distance_ = 0;
     code->literal_ = readFixedLiteral(stream);
     if(code->literal_<=SZ_HUFFMAN_ENDCODE){
         code->length_ = (code->literal_<SZ_HUFFMAN_ENDCODE)? 1 : 0;
@@ -971,12 +967,11 @@ SZ_STATIC sz_bool readFixedCode(szCode* code, szBitStream* stream)
     }else{
         code->length_ = LengthBase[index];
     }
-    code->distance_ = readBitsBE(5, stream);
-    if(code->distance_<0 || SZ_DISTANCE_CODES<=code->distance_){
+    index = readBitsBE(5, stream);
+    if(index<0 || SZ_DISTANCE_CODES<=index){
         return SZ_FALSE;
     }
 
-    index = code->distance_;
     extraBits = readBitsLE(DistanceExtraBits[index], stream);
     if(extraBits<0){
         return SZ_FALSE;
@@ -1411,7 +1406,7 @@ SZ_STATIC SZ_Status inflateDynamicHuffman(szContext* context)
 //--------------------------------------------------------------------------------------------------------------
 sz_bool flushWriteStreamLE(szContext* context);
 inline sz_bool writeByte(szContext* context, sz_u8 byte);
-sz_bool writeBitsLE(szContext* context, sz_s16 size, sz_u8 bits);
+sz_bool writeBitsLE(szContext* context, sz_s16 size, sz_u16 bits);
 sz_bool writeBitsBE(szContext* context, sz_s16 size, sz_u16 bits);
 void writeFixedLiteral(szContext* context, szLZSSLiteral literal);
 void writeDistance(szContext* context, sz_u16 distance);
@@ -1481,10 +1476,10 @@ inline sz_bool writeByte(szContext* context, sz_u8 byte)
     return writeBitsLE(context, 8, byte);
 }
 
-SZ_STATIC sz_bool writeBitsLE(szContext* context, sz_s16 size, sz_u8 bits)
+SZ_STATIC sz_bool writeBitsLE(szContext* context, sz_s16 size, sz_u16 bits)
 {
     SZ_ASSERT(SZ_NULL != context);
-    SZ_ASSERT(0<=size && size<=8);
+    SZ_ASSERT(0<=size);
 
     szContextDeflate* internal = REINTERPRET_CAST(szContextDeflate*, context->internal_);
     szWriteStream* stream = &internal->stream_;
@@ -1522,8 +1517,6 @@ SZ_STATIC sz_bool writeBitsBE(szContext* context, sz_s16 size, sz_u16 bits)
 
     while(0<size){
         if(context->availOut_<=context->thisTimeOut_){
-            stream->pendingBitsBE_ = size;
-            stream->pendingBE_ = bits;
             return SZ_FALSE;
         }
 
@@ -1562,6 +1555,21 @@ SZ_STATIC inline sz_u32 hash_FNV1(const sz_u8* v, sz_s32 count)
         hash ^= v[i];
     }
     return hash;
+}
+
+SZ_STATIC sz_u16 getLengthCode(sz_s32 length)
+{
+    SZ_ASSERT(SZ_HASH_LENGTH<=length && length<=SZ_MAX_LENGTH);
+    sz_s32 index = 0;
+    for(sz_s32 i=SZ_LENGTH_CODES-1; 0<=i; --i){
+        if(LengthBase[i]<=length){
+            index = i;
+            break;
+        }
+    }
+    sz_u16 code = STATIC_CAST(sz_u16, 0x101U + index);
+    sz_u16 extra = STATIC_CAST(sz_u16, length - LengthBase[index]);
+    return code | (extra<<SZ_LENGTH_EXTRA_SHIFT);
 }
 
 SZ_STATIC void initLZSSHistory(szLZSSHistory* history)
@@ -1665,13 +1673,16 @@ SZ_STATIC sz_bool addLZSSHistory(szLZSSHistory* history, Hash hash, const sz_u8*
     return SZ_TRUE;
 }
 
-SZ_STATIC sz_bool findLongestMatch(szLZSSLiteral* result, Hash hash, szLZSSHistory* history, const sz_u8* start, const sz_u8* end, const sz_u8* src)
+SZ_STATIC sz_s32 findLongestMatch(szLZSSLiteral* result, Hash hash, szLZSSHistory* history, const sz_u8* start, const sz_u8* end, const sz_u8* src)
 {
+    result->distance_ = 0;
+    result->code_ = 0;
+
     sz_s32 length = STATIC_CAST(sz_s32, end-start);
     sz_s32 offset = STATIC_CAST(sz_s32, start-src);
 
     sz_u16 position = history->entries_[ hash.value_ & SZ_CHAIN_MASK ].start_;
-    *result = {0};
+    sz_s32 maxLength = 0;
     while(position != SZ_CHAIN_EMPTY16){
         szLZSSHEntry* current = history->entries_ + position;
         position = current->next_;
@@ -1687,19 +1698,19 @@ SZ_STATIC sz_bool findLongestMatch(szLZSSLiteral* result, Hash hash, szLZSSHisto
         const sz_u8* s = src + current->position_;
         sz_s32 len = minimum(distance, length);
         sz_s32 l;
-        for(l=SZ_HASH_LENGTH; l<len; ++l){
+        for(l=0; l<len; ++l){
             if(s[l] != start[l]){
                 break;
             }
         }
 
-        l -= 3; //subtract offset
-        if(result->length_<l){
+        if(SZ_HASH_LENGTH<=l && maxLength<l){
             result->distance_ = STATIC_CAST(sz_u16, distance);
-            result->length_ = STATIC_CAST(sz_u8, l);
+            result->code_ = getLengthCode(l);
+            maxLength = l;
         }
     }
-    return 0<result->length_;
+    return maxLength;
 }
 
 SZ_STATIC sz_bool writeFixedCode(szContext* context, sz_u16 code)
@@ -1717,14 +1728,14 @@ SZ_STATIC sz_bool writeFixedCode(szContext* context, sz_u16 code)
     if(code<=143){
         sz_u16 bits = code + 48; //00110000
         return writeBitsBE(context, 8, bits);
-    }else if(code<=255){
-        sz_u16 bits = code + 400; //110010000
+    }else if(code<=255){ //144-255
+        sz_u16 bits = code - 144 + 400; //110010000
         return writeBitsBE(context, 9, bits);
-    }else if(code<=279){
+    }else if(code<=279){ //256-279
         sz_u16 bits = code - 256;
         return writeBitsBE(context, 7, bits);
     }else{
-        sz_u16 bits = code - 280 + 192;
+        sz_u16 bits = code - 280 + 192; //11000000
         return writeBitsBE(context, 8, bits);
     }
 }
@@ -1734,51 +1745,16 @@ SZ_STATIC void writeFixedLiteral(szContext* context, szLZSSLiteral literal)
     SZ_ASSERT(SZ_NULL != context);
     SZ_ASSERT(4<=(context->availOut_-context->thisTimeOut_));
 
-    sz_u16 code = literal.code_;
     if(literal.distance_<=0){ //code itself
-        writeFixedCode(context, code);
+        writeFixedCode(context, literal.code_);
 
     }else{
-        sz_u16 length = literal.length_ + 3;
-        SZ_ASSERT(3<=length && length<=SZ_MAX_LENGTH);
-        SZ_ASSERT(1<=literal.distance_ && literal.distance_<=SZ_MAX_DISTANCE);
-        if(length<=10){
-            code = 257 + length - 3;
-            writeFixedCode(context, code);
-
-        }else if(length<=18){
-            code = 265 + ((length-11)>>1);
-            sz_u8 extraBits = length & 0x01U;
-            writeFixedCode(context, code);
-            writeBitsLE(context, 1, extraBits);
-
-        }else if(length<=34){
-            code = 269 + ((length-19)>>2);
-            sz_u8 extraBits = length & 0x03U;
-            writeFixedCode(context, code);
-            writeBitsLE(context, 2, extraBits);
-
-        }else if(length<=66){
-            code = 273 + ((length-35)>>3);
-            sz_u8 extraBits = length & 0x07U;
-            writeFixedCode(context, code);
-            writeBitsLE(context, 3, extraBits);
-
-        }else if(length<=130){
-            code = 277 + ((length-67)>>4);
-            sz_u8 extraBits = length & 0x0FU;
-            writeFixedCode(context, code);
-            writeBitsLE(context, 4, extraBits);
-
-        }else if(length<=257){
-            code = 281 + ((length-131)>>5);
-            sz_u8 extraBits = length & 0x1FU;
-            writeFixedCode(context, code);
-            writeBitsLE(context, 5, extraBits);
-
-        }else{
-            code = 285;
-            writeFixedCode(context, code);
+        sz_u16 code = literal.code_ & ((0x01U<<SZ_LENGTH_EXTRA_SHIFT)-1);
+        sz_u8 extra = STATIC_CAST(sz_u8, literal.code_ >> SZ_LENGTH_EXTRA_SHIFT);
+        sz_u16 extraBits = LengthExtraBits[code-0x101U];
+        writeFixedCode(context, code);
+        if(0<extraBits){
+            writeBitsLE(context, extraBits, extra);
         }
         writeDistance(context, literal.distance_);
     }
@@ -1786,31 +1762,20 @@ SZ_STATIC void writeFixedLiteral(szContext* context, szLZSSLiteral literal)
 
 SZ_STATIC void writeDistance(szContext* context, sz_u16 distance)
 {
-    SZ_ASSERT(1<=distance);
-    sz_u16 minus_one = distance-1;
-    if(distance<=4){
-        writeBitsBE(context, 5, minus_one);
-        return;
+    SZ_ASSERT(1<=distance && distance<=SZ_MAX_DISTANCE);
+    sz_s32 index = 0;
+    for(sz_s32 i=SZ_DISTANCE_CODES-1; 0<=i; --i){
+        if(DistanceBase[i]<=distance){
+            index = i;
+            break;
+        }
     }
-
-    sz_s32 extraBits = 1;
-    sz_s32 d = 8;
-    while(d<distance){
-        d <<= 1;
-        ++extraBits;
+    writeBitsBE(context, 5, STATIC_CAST(sz_u16, index));
+    sz_s16 extraBits = DistanceExtraBits[index];
+    sz_u16 extra = distance - DistanceBase[index];
+    if(0<extraBits){
+        writeBitsLE(context, STATIC_CAST(sz_s16, extraBits), STATIC_CAST(sz_u16, extra));
     }
-    sz_u16 lower = STATIC_CAST(sz_u16, d>>1);
-    SZ_ASSERT(lower<distance && distance<=d);
-    sz_u16 base = minus_one-lower;
-    sz_u16 code = STATIC_CAST(sz_u16, (extraBits-1) << 1) + 4 + (base >> extraBits);
-    sz_u16 extra = base & ((0x01U<<extraBits)-1);
-    writeBitsBE(context, 5, code);
-    while(8<extraBits){
-        writeBitsLE(context, 8, STATIC_CAST(sz_u8, extra));
-        extraBits -= 8;
-        extra >>= 8;
-    }
-    writeBitsLE(context, STATIC_CAST(sz_s16, extraBits), STATIC_CAST(sz_u8, extra));
 }
 
 #ifdef __cplusplus
@@ -2146,7 +2111,15 @@ SZ_Status SZ_PREFIX(deflate)(szContext* context)
         case SZ_State_Init:
         {
             context->nextOut_[context->thisTimeOut_++] = SZ_Z_COMPRESSION_TYPE | (SZ_LZ77_WINDOWSIZE_MINUS_8<<4); //Compression type and LZ77's window size
-            context->nextOut_[context->thisTimeOut_++] = 0x1AU | (SZ_Z_COMPRESSION_LEVEL_SLOWEST<<6); //Check flag and compression level
+            switch(internal->level_)
+            {
+            case SZ_Level_NoCompression:
+                context->nextOut_[context->thisTimeOut_++] = 0x01U;
+                break;
+            default:
+                context->nextOut_[context->thisTimeOut_++] = 0x1AU | (SZ_Z_COMPRESSION_LEVEL_SLOWEST<<6); //Check flag and compression level
+                break;
+            }
             internal->state_ = SZ_State_Block;
         }
         continue;
@@ -2227,18 +2200,20 @@ SZ_Status SZ_PREFIX(deflate)(szContext* context)
                 const sz_u8* e = calcLZSSEnd(scur, send);
                 Hash hash;
                 hash.value_ = (SZ_NULL != e)? hash_FNV1(scur, SZ_HASH_LENGTH) : 0;
-                szLZSSLiteral result;
-                if(SZ_NULL != e && findLongestMatch(&result, hash, &internal->history_, scur, e, internal->nextIn_)){
-                    sz_u16 length = result.length_ + 3;
+                szLZSSLiteral result = {0};
+                sz_s32 length = (SZ_NULL != e)?
+                    findLongestMatch(&result, hash, &internal->history_, scur, e, internal->nextIn_)
+                    : 0;
+
+                if(0<length){
                     scur += length;
                     internal->currentIn_ += length;
                 }else{
-                    result.distance_ = 0;
                     result.code_ = *scur;
-                    result.length_ = 0;
                     ++scur;
                     ++internal->currentIn_;
                 }
+
                 if(SZ_NULL != e){
                     addLZSSHistory(&internal->history_, hash, s, internal->nextIn_);
                 }
@@ -2248,16 +2223,18 @@ SZ_Status SZ_PREFIX(deflate)(szContext* context)
                     break;
                 }
             }
-            internal->inLiteralSize_ = dstSize;
-            internal->outLiteralSize_ = 0;
+
             if(0<dstSize){
+                if(internal->availIn_<=internal->currentIn_){
+                    ++dstSize;
+                    dcur->distance_ = 0;
+                    dcur->code_ = 0x100U;
+                }
+                internal->inLiteralSize_ = dstSize;
+                internal->outLiteralSize_ = 0;
+
                 internal->state_ = SZ_State_Fixed;
             }else{
-                sz_s32 availOut = context->availOut_-context->thisTimeOut_;
-                if(availOut<2){
-                    return SZ_PENDING;
-                }
-                writeFixedCode(context, 256);
                 internal->state_ = SZ_State_End;
             }
         }
@@ -2298,7 +2275,12 @@ SZ_Status SZ_PREFIX(deflate)(szContext* context)
                 context->totalOut_ += context->thisTimeOut_;
                 return SZ_PENDING;
             }
-            if(SZ_FALSE == writeBytes(context, sizeof(sz_u32), REINTERPRET_CAST(const sz_u8*, &internal->adler_))){
+            sz_u8 adler32[4];
+            adler32[0] = STATIC_CAST(sz_u8, (internal->adler_>>24)&0xFFU);
+            adler32[1] = STATIC_CAST(sz_u8, (internal->adler_>>16)&0xFFU);
+            adler32[2] = STATIC_CAST(sz_u8, (internal->adler_>> 8)&0xFFU);
+            adler32[3] = STATIC_CAST(sz_u8, (internal->adler_>> 0)&0xFFU);
+            if(SZ_FALSE == writeBytes(context, sizeof(sz_u32), adler32)){
                 context->totalOut_ += context->thisTimeOut_;
                 return SZ_PENDING;
             }

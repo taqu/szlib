@@ -8,9 +8,8 @@ project(${ProjectName})
 set(SOURCES "main.cpp;test.cpp;../szlib.h")
 
 include_directories(AFTER ${CMAKE_CURRENT_SOURCE_DIR})
-
 if(USE_ZLIB)
-link_directories("zlib")
+    link_directories("zlib")
 endif(USE_ZLIB)
 
 set(FILES ${SOURCES})
@@ -23,6 +22,12 @@ add_executable(${ProjectName} ${FILES})
 
 if(MSVC)
     set(DEFAULT_CXX_FLAGS "/DWIN32 /D_WINDOWS /D_MBCS /W4 /WX- /nologo /fp:precise /Zc:wchar_t /TP /Gd")
+
+    if(USE_ZLIB)
+        link_directories("zlib")
+        set(DEFAULT_CXX_FLAGS "${DEFAULT_CXX_FLAGS} /DUSE_ZLIB")
+    endif(USE_ZLIB)
+
     if("1800" VERSION_LESS MSVC_VERSION)
         set(DEFAULT_CXX_FLAGS "${DEFAULT_CXX_FLAGS} /EHsc")
     endif()
@@ -39,16 +44,19 @@ if(MSVC)
         LINK_FLAGS_DEBUG "${DEFAULT_CXX_LINK_FLAGS_DEBUG}"
         LINK_FLAGS_RELEASE "${DEFAULT_CXX_LINK_FLAGS_RELEASE}")
 
-if(USE_ZLIB)
-    target_link_libraries(${ProjectName} "zlibstat.lib")
-endif(USE_ZLIB)
+    if(USE_ZLIB)
+        target_link_libraries(${ProjectName} "zlibstat.lib")
+    endif(USE_ZLIB)
 
 elseif(UNIX)
     set(DEFAULT_CXX_FLAGS "-Wall -O2 -std=c++11")
+    if(USE_ZLIB)
+        set(DEFAULT_CXX_FLAGS "${DEFAULT_CXX_FLAGS} -DUSE_ZLIB")
+    endif(USE_ZLIB)
     set(CMAKE_CXX_FLAGS "${DEFAULT_CXX_FLAGS}")
-if(USE_ZLIB)
-    target_link_libraries(${ProjectName} "z")
-endif(USE_ZLIB)
+    if(USE_ZLIB)
+        target_link_libraries(${ProjectName} "z")
+    endif(USE_ZLIB)
 elseif(APPLE)
 endif()
 
