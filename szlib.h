@@ -597,7 +597,7 @@ SZ_EXTERN SZ_Status SZ_PREFIX(inflate) (szContext* context);
 @warn Both pMalloc and pFree should be provided together.
 */
 #ifdef __cplusplus
-SZ_Status SZ_PREFIX(initDeflate) (szContext* context, sz_s32 size, const sz_u8* src, FUNC_MALLOC pMalloc=SZ_NULL, FUNC_FREE pFree=SZ_NULL, void* user=SZ_NULL, SZ_Level level = SZ_Level_Dynamic);
+SZ_Status SZ_PREFIX(initDeflate) (szContext* context, sz_s32 size, const sz_u8* src, FUNC_MALLOC pMalloc=SZ_NULL, FUNC_FREE pFree=SZ_NULL, void* user=SZ_NULL, SZ_Level level = SZ_Level_Fixed);
 #else
 SZ_EXTERN SZ_Status SZ_PREFIX(initDeflate) (szContext* context, sz_s32 size, const sz_u8* src, FUNC_MALLOC pMalloc, FUNC_FREE pFree, void* user, SZ_Level level);
 #endif
@@ -625,7 +625,7 @@ SZ_EXTERN void SZ_PREFIX(termInflate) (szContext* context);
 @brief Reset internal states of context.
 */
 #ifdef __cplusplus
-void SZ_PREFIX(resetDeflate) (szContext* context, sz_s32 size, const sz_u8* src, SZ_Level level = SZ_Level_Dynamic);
+void SZ_PREFIX(resetDeflate) (szContext* context, sz_s32 size, const sz_u8* src, SZ_Level level = SZ_Level_Fixed);
 #else
 SZ_EXTERN void SZ_PREFIX(resetDeflate) (szContext* context, sz_s32 size, const sz_u8* src, SZ_Level level);
 #endif
