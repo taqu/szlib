@@ -366,7 +366,7 @@ TEST_CASE("Encode Uncompressed")
         src[i] = static_cast<sz_u8>(mt());
     }
     std::vector<sz_u8> dst;
-    sz_s32 dstSize = def2(dst, srcSize, src, SZ_Level_NoCompression);
+    def2(dst, srcSize, src, SZ_Level_NoCompression);
 
     std::vector<sz_u8> dst2;
     sz_s32 dst2Size = inf2(dst2, (sz_s32)dst.size(), &dst[0]);
@@ -395,7 +395,7 @@ TEST_CASE("Encode Fixed")
         src[i] = static_cast<sz_u8>(i);
     }
     std::vector<sz_u8> dst;
-    sz_s32 dstSize = def2(dst, srcSize, src, SZ_Level_Fixed);
+    def2(dst, srcSize, src, SZ_Level_Fixed);
 
     std::vector<sz_u8> dst2;
     sz_s32 dst2Size = inf2(dst2, (sz_s32)dst.size(), &dst[0]);

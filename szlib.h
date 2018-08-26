@@ -723,9 +723,9 @@ namespace szlib
         sz_u32 typeBuffer_[SZ_REVERSE_PACKAGE_MERGE_BUFFER_SIZE];
         sz_u16 symbols_[SZ_HLENS+SZ_HDISTS];
         sz_u16 treeLengths_[SZ_SYMBOL_LENGTH_SIZE];
-        sz_s32 hlit_;
-        sz_s32 hdist_;
-        sz_s32 hclen_;
+        sz_u16 hlit_;
+        sz_u16 hdist_;
+        sz_u16 hclen_;
         sz_u16 outSymbols_;
         sz_u16 currentSymbol_;
 
@@ -792,7 +792,7 @@ namespace szlib
 
     void getLengths(sz_s32 size, sz_u16* lengths, szFreqCode* frequencies, sz_s32 limit, sz_u32* valueBuffer, sz_u32* typeBuffer)
     {
-        SZ_ASSERT(0<=size && size<=0xFFFFU);
+        SZ_ASSERT(0<=size && size<=0xFFFF);
         SZ_ASSERT(SZ_NULL != lengths);
         SZ_ASSERT(SZ_NULL != frequencies);
 
@@ -842,7 +842,7 @@ namespace szlib
         }
 
         for(sz_s32 i=0; i<size; ++i){
-            lengths[i] = limit;
+            lengths[i] = STATIC_CAST(sz_u16, limit);
         }
         for(sz_u32 i=0; i<minimumCost[limit-1]; ++i){
             value[limit-1][i] = frequencies[i].frequency_;
@@ -885,9 +885,9 @@ namespace szlib
 
     void calcHuffCodes(sz_s32 size, szFreqCode* codes, const sz_u16* lengths)
     {
-        sz_s32 count[SZ_MAX_BITS_LITERAL_CODE+1];
+        sz_u16 count[SZ_MAX_BITS_LITERAL_CODE+1];
         sz_u16 startCode[SZ_MAX_BITS_LITERAL_CODE+1];
-        memset(count, 0, sizeof(sz_s32)*(SZ_MAX_BITS_LITERAL_CODE+1));
+        memset(count, 0, sizeof(sz_u16)*(SZ_MAX_BITS_LITERAL_CODE+1));
 
         //
         for(sz_s32 i=0; i<size; ++i){
@@ -1677,7 +1677,7 @@ sz_bool writeBitsBE(szContext* context, sz_s16 size, sz_u16 bits);
 void writeFixedLiteral(szContext* context, szLZSSLiteral literal);
 void writeDistance(szContext* context, szLZSSLiteral literal);
 void generateCanonicalHuffmanLengths(szContext* context);
-sz_s32 generateTreeSymbols(sz_u16* symbols, szFreqCode* freqs, sz_s32 hlit, const sz_u16* lenLengths, sz_s32 hdist, const sz_u16* distLengths);
+sz_u16 generateTreeSymbols(sz_u16* symbols, szFreqCode* freqs, sz_s32 hlit, const sz_u16* lenLengths, sz_s32 hdist, const sz_u16* distLengths);
 
 SZ_STATIC sz_bool flushWriteStreamLE(szContext* context)
 {
@@ -2031,7 +2031,7 @@ SZ_STATIC void writeFixedLiteral(szContext* context, szLZSSLiteral literal)
         writeFixedCode(context, lengthCode);
 
     }else{
-        sz_u8 extra = getLengthExtra(literal);
+        sz_u16 extra = getLengthExtra(literal);
         sz_u16 extraBits = LengthExtraBits[lengthCode-0x101U];
         writeFixedCode(context, lengthCode);
         if(0<extraBits){
@@ -2051,14 +2051,6 @@ SZ_STATIC void writeDistance(szContext* context, szLZSSLiteral literal)
     if(0<extraBits){
         writeBitsLE(context, STATIC_CAST(sz_s16, extraBits), STATIC_CAST(sz_u16, extra));
     }
-}
-
-void printBits(sz_u32 x)
-{
-    do{
-        printf("%d", (x&0x01U));
-        x >>= 1;
-    }while(0 != x);
 }
 
 SZ_STATIC void generateCanonicalHuffmanLengths(szContext* context)
@@ -2089,20 +2081,13 @@ SZ_STATIC void generateCanonicalHuffmanLengths(szContext* context)
     for(hclen=SZ_SYMBOL_LENGTH_SIZE; 4<hclen && 0==internal->treeLengths_[hclen-1]; --hclen);
     calcHuffCodes(SZ_SYMBOL_LENGTH_SIZE, internal->freqCodeDists_, internal->treeLengths_);
 
-    internal->hlit_ = hlit;
-    internal->hdist_ = hdist;
-    internal->hclen_ = hclen;
+    internal->hlit_ = STATIC_CAST(sz_u16, hlit);
+    internal->hdist_ = STATIC_CAST(sz_u16, hdist);
+    internal->hclen_ = STATIC_CAST(sz_u16, hclen);
     internal->currentSymbol_ = 0;
-    for(sz_s32 i=0; i<SZ_SYMBOL_LENGTH_SIZE; ++i){
-        unsigned long msb = 0;
-        _BitScanReverse(&msb, internal->freqCodeDists_[i].huffCode_);
-        printf("code=%d, freq=%d, len=%d, msb=%d, ", internal->freqCodeDists_[i].code_, internal->freqCodeDists_[i].frequency_, internal->treeLengths_[i], msb);
-        printBits(internal->freqCodeDists_[i].huffCode_);
-        printf("\n");
-    }
 }
 
-SZ_STATIC sz_s32 generateTreeSymbols(sz_u16* symbols, szFreqCode* freqs, sz_s32 hlit, const sz_u16* lenLengths, sz_s32 hdist, const sz_u16* distLengths)
+SZ_STATIC sz_u16 generateTreeSymbols(sz_u16* symbols, szFreqCode* freqs, sz_s32 hlit, const sz_u16* lenLengths, sz_s32 hdist, const sz_u16* distLengths)
 {
     sz_s32 srcSize = hlit + hdist;
     sz_u16 src[SZ_HLENS+SZ_HDISTS];
@@ -2118,7 +2103,7 @@ SZ_STATIC sz_s32 generateTreeSymbols(sz_u16* symbols, szFreqCode* freqs, sz_s32 
         src[count] = distLengths[i];
     }
 
-    sz_s32 countResult=0;
+    sz_u16 countResult=0;
     count = 0;
     for(sz_s32 i=0, j=0, l=srcSize; i<l; i+=j){
         for(j=1; (i+j)<l && src[i+j]==src[i]; ++j);
@@ -2137,11 +2122,11 @@ SZ_STATIC sz_s32 generateTreeSymbols(sz_u16* symbols, szFreqCode* freqs, sz_s32 
                     }
                     if(repeat<=10){
                         symbols[countResult++] = 17;
-                        symbols[countResult++] = repeat - 3;
+                        symbols[countResult++] = STATIC_CAST(sz_u16, repeat - 3);
                         ++freqs[17].frequency_;
                     }else{
                         symbols[countResult++] = 18;
-                        symbols[countResult++] = repeat - 11;
+                        symbols[countResult++] = STATIC_CAST(sz_u16, repeat - 11);
                         ++freqs[18].frequency_;
                     }
                     runLength -= repeat;
@@ -2163,14 +2148,14 @@ SZ_STATIC sz_s32 generateTreeSymbols(sz_u16* symbols, szFreqCode* freqs, sz_s32 
                         repeat = runLength-3;
                     }
                     symbols[countResult++] = 16;
-                    symbols[countResult++] = repeat - 3;
+                    symbols[countResult++] = STATIC_CAST(sz_u16, repeat - 3);
                     ++freqs[16].frequency_;
                     runLength -= repeat;
                 }
             }
         } //if(0==src[i])
-        return countResult;
-    }
+    } //for(sz_s32 i=0
+    return countResult;
 }
 
 #ifdef __cplusplus
@@ -2594,11 +2579,11 @@ SZ_Status SZ_PREFIX(deflate)(szContext* context)
         case SZ_State_LZSS:
         {
             for(sz_s32 i=0; i<SZ_HLENS; ++i){
-                internal->freqCodes_[i].code_ = i;
+                internal->freqCodes_[i].code_ = STATIC_CAST(sz_u16, i);
                 internal->freqCodes_[i].frequency_ = 0;
             }
             for(sz_s32 i=0; i<SZ_HDISTS; ++i){
-                internal->freqDists_[i].code_ = i;
+                internal->freqDists_[i].code_ = STATIC_CAST(sz_u16, i);
                 internal->freqDists_[i].frequency_ = 0;
             }
             const sz_u8* scur = internal->nextIn_ + internal->currentIn_;
