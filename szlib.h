@@ -620,7 +620,7 @@ SZ_EXTERN SZ_Status SZ_PREFIX(createInflate) (szContext* context, FUNC_MALLOC pM
 @brief Terminate context with deallocating used resources.
 @param context ...
 */
-SZ_EXTERN void SZ_PREFIX(termInflate) (szContext* context);
+SZ_EXTERN void SZ_PREFIX(termDeflate) (szContext* context);
 /**
 @brief Reset internal states of context.
 */
