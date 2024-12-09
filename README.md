@@ -56,7 +56,7 @@ termInflate(&context);
 return ret == SZ_END? outCount : -1;
 ```
 # License
-This is free and unencumbered software released into the public domain.
+This software is distributed under two licenses, choose whichever you like.
 
 # Changes
 2018/08/17 Add deflate with only no-compression or static Huffman codes.
